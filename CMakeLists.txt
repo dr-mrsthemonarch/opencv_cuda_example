@@ -11,6 +11,7 @@ project(cudathing LANGUAGES CXX CUDA)
 find_package(CUDAToolkit REQUIRED)
 set(CMAKE_CUDA_ARCHITECTURES 121 CACHE STRING "" FORCE)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ../executable_debug)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ../executable_release)
 
 # --------------------------------------------------
 # FetchContent
@@ -224,7 +225,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "/MD /DNDEBUG")
 set(CMAKE_CXX_FLAGS_DEBUG "/MDd /Zi /Ob0 /Od /RTC1")
 
 message(STATUS "=== Build Configuration ===")
-message(STATUS "CUDA Architecture: 121 (RTX 4080)")
+message(STATUS "CUDA Architecture: 121 (RTX 5070Ti)")
 message(STATUS "CPU Optimization: AVX2, OpenMP LLVM")
 message(STATUS "CUDA Optimization: --use_fast_math, -O3")
 message(STATUS "==========================")

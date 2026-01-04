@@ -34,7 +34,7 @@ void run_gpu() {
     CHECK_CUDA(cudaMalloc(&d_out, bytes));
     CHECK_CUDA(cudaMemcpy(d_in, h_in.data(), bytes, cudaMemcpyHostToDevice));
 
-    dim3 block(8, 8, 8);
+    dim3 block(32, 32, 32);
     dim3 grid((X + block.x - 1) / block.x,
               (Y + block.y - 1) / block.y,
               (Z + block.z - 1) / block.z);
