@@ -1,6 +1,4 @@
-// opencv_cpu_vs_cuda_edges_morphology.cpp
-#define OPENCV_DISABLE_LOGGING
-
+// opencv_cpu_vs_cuda_edges_morphology_runtime_events.cpp
 #include <opencv2/opencv.hpp>
 #include <iostream>
 #include <chrono>
@@ -8,11 +6,11 @@
 #include "_deps/opencv_contrib-src/modules/cudafilters/include/opencv2/cudafilters.hpp"
 #include "_deps/opencv_contrib-src/modules/cudaimgproc/include/opencv2/cudaimgproc.hpp"
 
+#define CHECK_CUDA(x) do { cudaError_t err = x; if (err != cudaSuccess) { \
+    std::cerr << "CUDA error: " << cudaGetErrorString(err) << std::endl; exit(1); }} while(0)
+
 int main(int argc, char** argv){
-    cv::utils::logging::setLogLevel(
-    cv::utils::logging::LOG_LEVEL_SILENT);
-
-
+    cv::utils::logging::setLogLevel(cv::utils::logging::LOG_LEVEL_SILENT);
     if (cv::cuda::getCudaEnabledDeviceCount() == 0) {
         std::cerr << "No CUDA device found\n";
         return -1;
@@ -28,51 +26,55 @@ int main(int argc, char** argv){
 
     // ================= CPU PIPELINE =================
     cv::Mat cpu_blur, cpu_edges, cpu_morph;
-    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5,5));
 
     auto cpu_start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < iterations; ++i) {
-        cv::GaussianBlur(image, cpu_blur, cv::Size(7, 7), 0);
+        cv::GaussianBlur(image, cpu_blur, cv::Size(7,7), 0);
         cv::Canny(cpu_blur, cpu_edges, 50, 150);
         cv::morphologyEx(cpu_edges, cpu_morph, cv::MORPH_CLOSE, kernel);
     }
     auto cpu_end = std::chrono::high_resolution_clock::now();
+    double cpu_ms = std::chrono::duration<double, std::milli>(cpu_end - cpu_start).count();
 
     // ================= CUDA PIPELINE =================
     cv::cuda::GpuMat d_img, d_blur, d_edges, d_morph;
     d_img.upload(image);
 
-    auto gaussian = cv::cuda::createGaussianFilter(
-        d_img.type(), d_img.type(), cv::Size(7, 7), 0);
-
+    auto gaussian = cv::cuda::createGaussianFilter(d_img.type(), d_img.type(), cv::Size(7,7), 0);
     auto canny = cv::cuda::createCannyEdgeDetector(50.0, 150.0);
+    auto morph = cv::cuda::createMorphologyFilter(cv::MORPH_CLOSE, d_img.type(), kernel);
 
-    auto morph = cv::cuda::createMorphologyFilter(
-        cv::MORPH_CLOSE, d_img.type(), kernel);
+    // CUDA runtime events
+    cudaEvent_t start, stop;
+    CHECK_CUDA(cudaEventCreate(&start));
+    CHECK_CUDA(cudaEventCreate(&stop));
 
-    cv::cuda::Event start, stop;
-    start.record();
+    CHECK_CUDA(cudaEventRecord(start));
     for (int i = 0; i < iterations; ++i) {
         gaussian->apply(d_img, d_blur);
         canny->detect(d_blur, d_edges);
         morph->apply(d_edges, d_morph);
     }
-    stop.record();
-    cudaDeviceSynchronize();
+    CHECK_CUDA(cudaEventRecord(stop));
+    CHECK_CUDA(cudaEventSynchronize(stop)); // wait for GPU to finish
 
-    double cpu_ms =
-        std::chrono::duration<double, std::milli>(cpu_end - cpu_start).count();
-    float gpu_ms = cv::cuda::Event::elapsedTime(start, stop);
+    float gpu_ms = 0;
+    CHECK_CUDA(cudaEventElapsedTime(&gpu_ms, start, stop));
 
     std::cout << "Iterations: " << iterations << std::endl;
     std::cout << "CPU time (ms):  " << cpu_ms << std::endl;
     std::cout << "CUDA time (ms): " << gpu_ms << std::endl;
 
+    // Optional: show result
     cv::Mat result;
     d_morph.download(result);
-
     cv::imshow("CUDA Result", result);
     cv::waitKey(0);
+
+    // Cleanup
+    CHECK_CUDA(cudaEventDestroy(start));
+    CHECK_CUDA(cudaEventDestroy(stop));
 
     return 0;
 }
