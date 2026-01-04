@@ -149,6 +149,7 @@ target_link_libraries(cudabenchmark PRIVATE
 if(OpenMP_CXX_FOUND)
     target_link_libraries(cuda_cpu PRIVATE OpenMP::OpenMP_CXX)
 endif()
+
 target_link_libraries(cuda_cpu PRIVATE
         CUDA::cudart
 )
@@ -156,3 +157,74 @@ target_link_libraries(cuda_cpu PRIVATE
 target_include_directories(opencvbenchmark PRIVATE ${OPENCV_INCLUDE_DIRS})
 target_include_directories(cudabenchmark PRIVATE ${OPENCV_INCLUDE_DIRS})
 
+
+if(MSVC)
+    # CPU-only files optimization flags (NOT passed to NVCC)
+    target_compile_options(cuda_cpu PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:/O2>
+            $<$<COMPILE_LANGUAGE:CXX>:/Oi>
+            $<$<COMPILE_LANGUAGE:CXX>:/Ot>
+            $<$<COMPILE_LANGUAGE:CXX>:/GL>
+            $<$<COMPILE_LANGUAGE:CXX>:/fp:fast>
+            $<$<COMPILE_LANGUAGE:CXX>:/arch:AVX2>
+            $<$<COMPILE_LANGUAGE:CXX>:/openmp:llvm>
+    )
+
+    # CUDA-specific flags (passed to NVCC)
+    target_compile_options(cuda_cpu PRIVATE
+            $<$<COMPILE_LANGUAGE:CUDA>:-O3>
+            $<$<COMPILE_LANGUAGE:CUDA>:--use_fast_math>
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/O2,/Oi,/fp:fast>
+    )
+
+    # Linker optimizations (only for final linking)
+    target_link_options(cuda_cpu PRIVATE
+            $<$<CONFIG:Release>:/LTCG>
+            $<$<CONFIG:Release>:/OPT:REF>
+            $<$<CONFIG:Release>:/OPT:ICF>
+    )
+
+    # Definitions
+    target_compile_definitions(cuda_cpu PRIVATE
+            _USE_MATH_DEFINES
+            NOMINMAX
+    )
+
+    message(STATUS "Using MSVC with AVX2 optimizations for Ryzen 3800X")
+
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # Clang-cl
+    target_compile_options(cuda_cpu PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:-O3>
+            $<$<COMPILE_LANGUAGE:CXX>:-march=znver2>
+            $<$<COMPILE_LANGUAGE:CXX>:-mtune=znver2>
+            $<$<COMPILE_LANGUAGE:CXX>:-ffast-math>
+            $<$<COMPILE_LANGUAGE:CXX>:-mavx2>
+            $<$<COMPILE_LANGUAGE:CXX>:-mfma>
+    )
+    message(STATUS "Using Clang-cl with Zen 2 optimizations")
+endif()
+
+# Separate CPU source files from CUDA source files
+set_source_files_properties(
+        main.cpp
+        cpp_benchmark.cpp
+        PROPERTIES
+        LANGUAGE CXX
+)
+
+set_source_files_properties(
+        gpu_benchmark.cuf
+        PROPERTIES
+        LANGUAGE CUDA
+)
+
+# Build configuration
+set(CMAKE_CXX_FLAGS_RELEASE "/MD /DNDEBUG")
+set(CMAKE_CXX_FLAGS_DEBUG "/MDd /Zi /Ob0 /Od /RTC1")
+
+message(STATUS "=== Build Configuration ===")
+message(STATUS "CUDA Architecture: 121 (RTX 4080)")
+message(STATUS "CPU Optimization: AVX2, OpenMP LLVM")
+message(STATUS "CUDA Optimization: --use_fast_math, -O3")
+message(STATUS "==========================")

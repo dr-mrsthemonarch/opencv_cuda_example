@@ -62,7 +62,8 @@ void run_cpu() {
     auto cpu_end = std::chrono::high_resolution_clock::now();
     double cpu_ms =
             std::chrono::duration<double, std::milli>(cpu_end - cpu_start).count();
-    std::cout << "CPU threads: " << num_threads << std::endl;
+
+
     std::cout << "CPU time (ms): " << cpu_ms << std::endl;
 }
 
@@ -89,7 +90,6 @@ void run_cpu_fast() {
     auto cpu_end = std::chrono::high_resolution_clock::now();
     double cpu_ms = std::chrono::duration<double, std::milli>(cpu_end - cpu_start).count();
 
-    std::cout << "CPU threads (OpenMP): " << omp_get_max_threads() << std::endl;
     std::cout << "CPU time (ms, OpenMP): " << cpu_ms << std::endl;
 }
 
@@ -148,7 +148,7 @@ void run_cpu_simd() {
     auto cpu_end = std::chrono::high_resolution_clock::now();
     double cpu_ms = std::chrono::duration<double, std::milli>(cpu_end - cpu_start).count();
 
-    std::cout << "CPU threads (SIMD): " << omp_get_max_threads() << std::endl;
+
     std::cout << "CPU time (ms, SIMD): " << cpu_ms << std::endl;
 
     _mm_free(h_in);
@@ -224,8 +224,8 @@ void run_cpu_amd_optimized() {
     auto cpu_end = std::chrono::high_resolution_clock::now();
     double cpu_ms = std::chrono::duration<double, std::milli>(cpu_end - cpu_start).count();
 
-    std::cout << "CPU threads (AMD Optimized): " << omp_get_max_threads() << std::endl;
-    std::cout << "CPU time (ms, AMD): " << cpu_ms << std::endl;
+
+    std::cout << "CPU time (ms, AMD optmized): " << cpu_ms << std::endl;
 
     _mm_free(h_in);
     _mm_free(h_out_cpu);
@@ -242,7 +242,6 @@ inline __m256 sin_ps_approx(__m256 x) {
     __m256 k = _mm256_round_ps(_mm256_div_ps(x, two_pi),
                                _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
     x = _mm256_sub_ps(x, _mm256_mul_ps(k, two_pi));
-
 
     // Taylor series: sin(x) ≈ x - x³/6 + x⁵/120
     __m256 x2 = _mm256_mul_ps(x, x);
@@ -303,6 +302,101 @@ void run_cpu_amd_fast_math() {
     double cpu_ms = std::chrono::duration<double, std::milli>(cpu_end - cpu_start).count();
 
     std::cout << "CPU time (ms, AMD Fast Math): " << cpu_ms << std::endl;
+
+    _mm_free(h_in);
+    _mm_free(h_out_cpu);
+}
+
+void run_cpu_amd_simple2() {
+    const int X = 2560;
+    const int Y = 2560;
+    const int Z = 64;
+    const size_t N = static_cast<size_t>(X) * Y * Z;
+    const int iterations = 50;
+
+    float*  h_in = (float*)_mm_malloc(N * sizeof(float), 64);
+    float*  h_out_cpu = (float*)_mm_malloc(N * sizeof(float), 64);
+
+    for (size_t i = 0; i < N; ++i)
+        h_in[i] = static_cast<float>(i % 100) * 0.01f;
+
+    auto cpu_start = std::chrono::high_resolution_clock::now();
+
+    #pragma omp parallel num_threads(16)
+    {
+        for (int it = 0; it < iterations; ++it) {
+            #pragma omp for schedule(static) nowait
+            for (size_t i = 0; i < N; ++i) {
+                float v = h_in[i];
+                // Let compiler vectorize with -ffast-math -O3
+                h_out_cpu[i] = 0.5f * std::sin(2.0f * v) + std::sqrt(v + 1.0f);
+            }
+        }
+    }
+
+    auto cpu_end = std::chrono::high_resolution_clock::now();
+    double cpu_ms = std::chrono::duration<double, std::milli>(cpu_end - cpu_start).count();
+
+    std::cout << "CPU time (ms, AMD Compiler Optimized): " << cpu_ms << std::endl;
+
+    _mm_free(h_in);
+    _mm_free(h_out_cpu);
+}
+
+void run_cpu_amd_optimized2() {
+    const int X = 2560;
+    const int Y = 2560;
+    const int Z = 64;
+    const size_t N = static_cast<size_t>(X) * Y * Z;
+    const int iterations = 50;
+
+    // Aligned allocation
+    float* h_in = (float*)_mm_malloc(N * sizeof(float), 64);
+    float* h_out_cpu = (float*)_mm_malloc(N * sizeof(float), 64);
+
+    for (size_t i = 0; i < N; ++i)
+        h_in[i] = static_cast<float>(i % 100) * 0.01f;
+
+    auto cpu_start = std::chrono::high_resolution_clock::now();
+
+    // Move parallel region OUTSIDE iteration loop (critical for AMD)
+    #pragma omp parallel num_threads(16)
+    {
+        for (int it = 0; it < iterations; ++it) {
+            // Static scheduling, large chunks for better cache locality
+            #pragma omp for schedule(static, 4096) nowait
+            for (size_t i = 0; i < N; i += 8) {
+                if (i + 8 <= N) {
+                    __m256 v = _mm256_loadu_ps(&h_in[i]);
+
+                    // Simplified: sin(v)*cos(v) = 0.5*sin(2v)
+                    __m256 two_v = _mm256_add_ps(v, v);
+
+                    // For AMD without SVML, use fast approximations
+                    // or let compiler handle it with -ffast-math
+                    __m256 sin_2v = _mm256_sin_ps(two_v);
+                    __m256 half_sin = _mm256_mul_ps(sin_2v, _mm256_set1_ps(0.5f));
+
+                    __m256 v_plus_one = _mm256_add_ps(v, _mm256_set1_ps(1.0f));
+                    __m256 sqrt_v = _mm256_sqrt_ps(v_plus_one);
+
+                    __m256 result = _mm256_add_ps(half_sin, sqrt_v);
+
+                    _mm256_storeu_ps(&h_out_cpu[i], result);
+                } else {
+                    for (size_t j = i; j < N; ++j) {
+                        float v = h_in[j];
+                        h_out_cpu[j] = 0.5f * std::sin(2.0f * v) + std::sqrt(v + 1.0f);
+                    }
+                }
+            }
+        }
+    }
+
+    auto cpu_end = std::chrono::high_resolution_clock::now();
+    double cpu_ms = std::chrono::duration<double, std::milli>(cpu_end - cpu_start).count();
+
+    std::cout << "CPU time (ms, AMD Optimized 2): " << cpu_ms << std::endl;
 
     _mm_free(h_in);
     _mm_free(h_out_cpu);
