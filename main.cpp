@@ -1,4 +1,5 @@
 // main.cpp
+#include <cuda_runtime_api.h>
 #include <string>
 
 // Forward declarations
@@ -19,6 +20,10 @@ void run_cpu_amd_compiler();
 void run_cpu_amd_optimized2();
 
 int main(int argc, char **argv) {
+    int device;
+    cudaGetDevice(&device);
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, device);
     run_gpu();
     run_cpu();
     run_cpu_fast();

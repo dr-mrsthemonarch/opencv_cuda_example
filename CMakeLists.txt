@@ -9,7 +9,7 @@ project(cudathing LANGUAGES CXX CUDA)
 # CUDA
 # --------------------------------------------------
 find_package(CUDAToolkit REQUIRED)
-set(CMAKE_CUDA_ARCHITECTURES 121 CACHE STRING "" FORCE)
+set(CMAKE_CUDA_ARCHITECTURES 120 CACHE STRING "" FORCE)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ../executable_debug)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ../executable_release)
 
@@ -123,6 +123,8 @@ add_executable(cudabenchmark ${CUDA_SOURCES})
 
 add_executable(cuda_cpu  ${CUDA_CPU_SOURCES})
 
+add_executable(cuda_sanity cuda_sanity.cu)
+
 set_target_properties(cudabenchmark PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON
 )
@@ -130,6 +132,9 @@ set_target_properties(opencvbenchmark PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON
 )
 set_target_properties(cuda_cpu PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+)
+set_target_properties(cuda_sanity PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON
 )
 
@@ -171,13 +176,6 @@ if(MSVC)
             $<$<COMPILE_LANGUAGE:CXX>:/openmp:llvm>
     )
 
-    # CUDA-specific flags (passed to NVCC)
-    target_compile_options(cuda_cpu PRIVATE
-            $<$<COMPILE_LANGUAGE:CUDA>:-O3>
-            $<$<COMPILE_LANGUAGE:CUDA>:--use_fast_math>
-            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/O2,/Oi,/fp:fast>
-    )
-
     # Linker optimizations (only for final linking)
     target_link_options(cuda_cpu PRIVATE
             $<$<CONFIG:Release>:/LTCG>
@@ -206,19 +204,19 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(STATUS "Using Clang-cl with Zen 2 optimizations")
 endif()
 
-# Separate CPU source files from CUDA source files
-set_source_files_properties(
-        main.cpp
-        cpp_benchmark.cpp
-        PROPERTIES
-        LANGUAGE CXX
-)
-
-set_source_files_properties(
-        gpu_benchmark.cuf
-        PROPERTIES
-        LANGUAGE CUDA
-)
+## Separate CPU source files from CUDA source files
+#set_source_files_properties(
+#        main.cpp
+#        cpp_benchmark.cpp
+#        PROPERTIES
+#        LANGUAGE CXX
+#)
+#
+#set_source_files_properties(
+#        gpu_benchmark.cuf
+#        PROPERTIES
+#        LANGUAGE CUDA
+#)
 
 # Build configuration
 set(CMAKE_CXX_FLAGS_RELEASE "/MD /DNDEBUG")
@@ -229,3 +227,4 @@ message(STATUS "CUDA Architecture: 121 (RTX 5070Ti)")
 message(STATUS "CPU Optimization: AVX2, OpenMP LLVM")
 message(STATUS "CUDA Optimization: --use_fast_math, -O3")
 message(STATUS "==========================")
+
