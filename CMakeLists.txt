@@ -24,7 +24,7 @@ FetchContent_Declare(
         GIT_TAG 4.13.0
 )
 
-
+find_package(OpenMP REQUIRED)
 
 # --------------------------------------------------
 # Make opencv_contrib available BEFORE opencv
@@ -106,18 +106,29 @@ set(OPENCV_SOURCES
 set(CUDA_SOURCES
 cudamain.cu
 )
+set(CUDA_SOURCES
+        cudamain.cu
+)
+set(CUDA_CPU_SOURCES
+        main.cpp
+        cpp_benchmark.cpp
+        gpu_benchmark.cu
+)
 
 
-add_executable(opencvbenchmark ${OPENCV_SOURCES}
-        opencv_main.cu)
+add_executable(opencvbenchmark ${OPENCV_SOURCES})
 
-add_executable(cudabenchmark ${CUDA_SOURCES}
-        cudamain.cu)
+add_executable(cudabenchmark ${CUDA_SOURCES})
+
+add_executable(cuda_cpu  ${CUDA_CPU_SOURCES})
 
 set_target_properties(cudabenchmark PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON
 )
 set_target_properties(opencvbenchmark PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+)
+set_target_properties(cuda_cpu PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON
 )
 
@@ -135,5 +146,13 @@ target_link_libraries(cudabenchmark PRIVATE
         CUDA::cudart
 )
 
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(cuda_cpu PRIVATE OpenMP::OpenMP_CXX)
+endif()
+target_link_libraries(cuda_cpu PRIVATE
+        CUDA::cudart
+)
+
 target_include_directories(opencvbenchmark PRIVATE ${OPENCV_INCLUDE_DIRS})
 target_include_directories(cudabenchmark PRIVATE ${OPENCV_INCLUDE_DIRS})
+

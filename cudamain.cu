@@ -51,7 +51,7 @@ int main()
         h_in[i] = static_cast<float>(i % 100) * 0.01f;
 
     // ================= PARALLEL CPU =================
-    const unsigned num_threads = std::min(8u, std::thread::hardware_concurrency());
+    const unsigned num_threads = std::min(16u, std::thread::hardware_concurrency());
     std::vector<std::thread> threads;
 
     auto cpu_start = std::chrono::high_resolution_clock::now();

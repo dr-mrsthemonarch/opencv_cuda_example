@@ -40,7 +40,7 @@ int main(int argc, char** argv){
     }
 
     const int iterations = 100;
-    const int num_threads = 8; // parallelize across 8 CPU cores
+    const int num_threads = 16; // parallelize across 8 CPU cores
 
     // ================= CPU PIPELINE (PARALLEL) =================
     cv::Mat cpu_result = cv::Mat::zeros(image.size(), image.type());
